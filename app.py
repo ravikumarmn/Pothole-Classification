@@ -11,50 +11,69 @@ import io
 img_width, img_height = 224, 224
 
 def load_and_preprocess_image(img_data):
-    img = Image.open(img_data)
-    img = img.resize((img_width, img_height))
-    img_tensor = np.array(img)
-    img_tensor = np.expand_dims(img_tensor, axis=0)
-    img_tensor = preprocess_input(img_tensor)
-    return img_tensor
+    try:
+        img = Image.open(img_data)
+        img = img.resize((img_width, img_height))
+        img_tensor = np.array(img)
+        img_tensor = np.expand_dims(img_tensor, axis=0)
+        img_tensor = preprocess_input(img_tensor)
+        return img_tensor
+    except Exception as e:
+        st.error(f"Error processing the image: {e}")
+        return None
 
 def extract_features_single_image(img_data):
-    conv_base = VGG16(weights='imagenet', include_top=False)
-    img_tensor = load_and_preprocess_image(img_data)
-    features = conv_base.predict(img_tensor)
-    return features
+    try:
+        conv_base = VGG16(weights='imagenet', include_top=False)
+        img_tensor = load_and_preprocess_image(img_data)
+        if img_tensor is not None:
+            features = conv_base.predict(img_tensor)
+            return features
+        else:
+            return None
+    except Exception as e:
+        st.error(f"Error extracting features: {e}")
+        return None
 
 def predict_image(classifier_model, img_data, threshold=0.5):
-    features = extract_features_single_image(img_data)
-    prediction = classifier_model.predict(features)
-    class_label = "Pothole Detected" if prediction > threshold else "No Pothole Detected"
-    return class_label
+    try:
+        features = extract_features_single_image(img_data)
+        if features is not None:
+            prediction = classifier_model.predict(features)
+            class_label = "Pothole Detected" if prediction > threshold else "No Pothole Detected"
+            return class_label
+        else:
+            return "Error in prediction"
+    except Exception as e:
+        st.error(f"Error in prediction process: {e}")
+        return "Prediction error"
 
 # Load the model
 model_path = 'my_model.keras'
-classifier_model = load_model(model_path)
+try:
+    classifier_model = load_model(model_path)
+except Exception as e:
+    st.error(f"Failed to load model: {e}")
 
 # Setting up the Streamlit interface
 st.title('Pothole Detection App')
 st.write("Upload a road image, and the app will predict whether it contains potholes.")
 
-col1, col2 = st.columns(2)
+uploaded_files = st.file_uploader("Choose images...", type=["jpg", "png"], accept_multiple_files=True, key='file_uploader')
 
-with col1:
-    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png"], key='file_uploader')
-
-if uploaded_file is not None:
-    with col2:
+for uploaded_file in uploaded_files:
+    with st.container():  # Create a new container for each image
         st.image(uploaded_file, caption='Uploaded Image', use_column_width=True)
-    
-    st.write("Classifying...")
-    with st.spinner('Analyzing the image...'):
-        label = predict_image(classifier_model, uploaded_file)
-        st.success("Classification completed")
-
-    st.subheader('Prediction Result:')
-    st.write(f"**{label}**")
-    if label == "Pothole Detected":
-        st.markdown('⚠️ **Caution is advised!** This road might be hazardous.')
-    else:
-        st.markdown('✅ The road surface appears to be in good condition.')
+        st.write("Classifying...")
+        with st.spinner('Analyzing the image...'):
+            label = predict_image(classifier_model, uploaded_file)
+        if label not in ["Error in prediction", "Prediction error"]:
+            st.success("Classification completed")
+            st.subheader('Prediction Result:')
+            st.write(f"**{label}**")
+            if label == "Pothole Detected":
+                st.markdown('⚠️ **Caution is advised!** This road might be hazardous.')
+            else:
+                st.markdown('✅ The road surface appears to be in good condition.')
+        else:
+            st.error("Failed to classify the image due to an error.")
